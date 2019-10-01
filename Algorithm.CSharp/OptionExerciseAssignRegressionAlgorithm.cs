@@ -1,11 +1,11 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
- * 
- * Licensed under the Apache License, Version 2.0 (the "License"); 
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -15,11 +15,12 @@
 */
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using QuantConnect.Data;
 using QuantConnect.Data.Market;
 using QuantConnect.Orders;
-using QuantConnect.Securities;
+using QuantConnect.Interfaces;
 
 namespace QuantConnect.Algorithm.CSharp
 {
@@ -27,9 +28,11 @@ namespace QuantConnect.Algorithm.CSharp
     /// This regression algorithm tests option exercise and assignment functionality
     /// We open two positions and go with them into expiration. We expect to see our long position exercised and short position assigned.
     /// </summary>
-    public class OptionExerciseAssignRegressionAlgorithm : QCAlgorithm
+    /// <meta name="tag" content="regression test" />
+    /// <meta name="tag" content="options" />
+    public class OptionExerciseAssignRegressionAlgorithm : QCAlgorithm, IRegressionAlgorithmDefinition
     {
-        private const string UnderlyingTicker = "GOOG"; 
+        private const string UnderlyingTicker = "GOOG";
         public readonly Symbol Underlying = QuantConnect.Symbol.Create(UnderlyingTicker, SecurityType.Equity, Market.USA);
         public readonly Symbol OptionSymbol = QuantConnect.Symbol.Create(UnderlyingTicker, SecurityType.Option, Market.USA);
         private bool _assignedOption = false;
@@ -52,7 +55,7 @@ namespace QuantConnect.Algorithm.CSharp
             SetBenchmark(equity.Symbol);
         }
 
-        ~OptionExerciseAssignRegressionAlgorithm()
+        public override void OnEndOfAlgorithm()
         {
             if (!_assignedOption)
             {
@@ -103,5 +106,41 @@ namespace QuantConnect.Algorithm.CSharp
             Log(assignmentEvent.ToString());
             _assignedOption = true;
         }
+
+        /// <summary>
+        /// This is used by the regression test system to indicate if the open source Lean repository has the required data to run this algorithm.
+        /// </summary>
+        public bool CanRunLocally { get; } = true;
+
+        /// <summary>
+        /// This is used by the regression test system to indicate which languages this algorithm is written in.
+        /// </summary>
+        public Language[] Languages { get; } = { Language.CSharp, Language.Python };
+
+        /// <summary>
+        /// This is used by the regression test system to indicate what the expected statistics are from running the algorithm
+        /// </summary>
+        public Dictionary<string, string> ExpectedStatistics => new Dictionary<string, string>
+        {
+            {"Total Trades", "4"},
+            {"Average Win", "0.30%"},
+            {"Average Loss", "-0.33%"},
+            {"Compounding Annual Return", "-72.392%"},
+            {"Drawdown", "0.400%"},
+            {"Expectancy", "-0.358"},
+            {"Net Profit", "-0.352%"},
+            {"Sharpe Ratio", "-11.225"},
+            {"Loss Rate", "67%"},
+            {"Win Rate", "33%"},
+            {"Profit-Loss Ratio", "0.93"},
+            {"Alpha", "-0.887"},
+            {"Beta", "-1.376"},
+            {"Annual Standard Deviation", "0.04"},
+            {"Annual Variance", "0.002"},
+            {"Information Ratio", "-1.774"},
+            {"Tracking Error", "0.068"},
+            {"Treynor Ratio", "0.322"},
+            {"Total Fees", "$2.00"}
+        };
     }
 }

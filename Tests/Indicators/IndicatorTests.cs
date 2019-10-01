@@ -1,11 +1,11 @@
 ﻿/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
- * 
- * Licensed under the Apache License, Version 2.0 (the "License"); 
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -14,10 +14,12 @@
 */
 
 using System;
+using System.Globalization;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
 using NUnit.Framework;
+using QuantConnect.Data.Market;
 using QuantConnect.Indicators;
 
 namespace QuantConnect.Tests.Indicators
@@ -59,15 +61,12 @@ namespace QuantConnect.Tests.Indicators
         }
 
         [Test]
-        [ExpectedException(typeof(ArgumentException), MatchType = MessageMatch.Contains, ExpectedMessage = "forward only")]
-        public void ThrowsOnPastTimes()
+        [ExpectedException(typeof(ArgumentException), MatchType = MessageMatch.Contains, ExpectedMessage = "expected to be of type")]
+        public void ThrowsOnDifferentDataType()
         {
             var target = new TestIndicator();
 
-            var time = DateTime.UtcNow;
-
-            target.Update(new IndicatorDataPoint(time, 1m));
-            target.Update(new IndicatorDataPoint(time.AddMilliseconds(-1), 2m));
+            target.Update(new Tick());
         }
 
         [Test]
@@ -92,13 +91,20 @@ namespace QuantConnect.Tests.Indicators
         public void SortsTheSameAsDecimalDescending()
         {
             int count = 100;
-            var targets = Enumerable.Range(0, count).Select(x => new TestIndicator(x.ToString())).ToList();
+            var targets = Enumerable.Range(0, count)
+                .Select(x => new TestIndicator(x.ToString(CultureInfo.InvariantCulture)))
+                .ToList();
+
             for (int i = 0; i < targets.Count; i++)
             {
                 targets[i].Update(DateTime.Today, i);
             }
 
-            var expected = Enumerable.Range(0, count).Select(x => (decimal)x).OrderByDescending(x => x).ToList();
+            var expected = Enumerable.Range(0, count)
+                .Select(x => (decimal)x)
+                .OrderByDescending(x => x)
+                .ToList();
+
             var actual = targets.OrderByDescending(x => x).ToList();
             foreach (var pair in expected.Zip<decimal, TestIndicator, Tuple<decimal, TestIndicator>>(actual, Tuple.Create))
             {
@@ -110,7 +116,7 @@ namespace QuantConnect.Tests.Indicators
         public void SortsTheSameAsDecimalAsecending()
         {
             int count = 100;
-            var targets = Enumerable.Range(0, count).Select(x => new TestIndicator(x.ToString())).ToList();
+            var targets = Enumerable.Range(0, count).Select(x => new TestIndicator(x.ToString(CultureInfo.InvariantCulture))).ToList();
             for (int i = 0; i < targets.Count; i++)
             {
                 targets[i].Update(DateTime.Today, i);
@@ -126,11 +132,27 @@ namespace QuantConnect.Tests.Indicators
 
         [Test]
         public void ComparisonFunctions()
-        {   
+        {
             TestComparisonOperators<int>();
             TestComparisonOperators<long>();
             TestComparisonOperators<float>();
             TestComparisonOperators<double>();
+        }
+
+        [Test]
+        public void EqualsMethodShouldNotThrowExceptions()
+        {
+            var indicator = new TestIndicator();
+            var res = true;
+            try
+            {
+                res = indicator.Equals(new Exception(""));
+            }
+            catch (InvalidCastException)
+            {
+                Assert.Fail();
+            }
+            Assert.IsFalse(res);
         }
 
         private static void TestComparisonOperators<TValue>()

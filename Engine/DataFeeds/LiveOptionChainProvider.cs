@@ -1,11 +1,11 @@
 ﻿/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
- * 
- * Licensed under the Apache License, Version 2.0 (the "License"); 
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -17,7 +17,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
+using System.Threading;
 using QuantConnect.Interfaces;
+using QuantConnect.Logging;
 
 namespace QuantConnect.Lean.Engine.DataFeeds
 {
@@ -27,6 +29,18 @@ namespace QuantConnect.Lean.Engine.DataFeeds
     /// </summary>
     public class LiveOptionChainProvider : IOptionChainProvider
     {
+        private const int MaxDownloadAttempts = 5;
+
+        /// <summary>
+        /// Static constructor for the <see cref="LiveOptionChainProvider"/> class
+        /// </summary>
+        static LiveOptionChainProvider()
+        {
+            // The OCC website now requires at least TLS 1.1 for API requests.
+            // NET 4.5.2 and below does not enable these more secure protocols by default, so we add them in here
+            ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls11 | SecurityProtocolType.Tls12;
+        }
+
         /// <summary>
         /// Gets the list of option contracts for a given underlying symbol
         /// </summary>
@@ -40,7 +54,32 @@ namespace QuantConnect.Lean.Engine.DataFeeds
                 throw new NotSupportedException($"LiveOptionChainProvider.GetOptionContractList(): SecurityType.Equity is expected but was {symbol.SecurityType}");
             }
 
-            return FindOptionContracts(symbol.Value);
+            var attempt = 1;
+            IEnumerable<Symbol> contracts;
+
+            while (true)
+            {
+                try
+                {
+                    Log.Trace($"LiveOptionChainProvider.GetOptionContractList(): Fetching option chain for {symbol.Value} [Attempt {attempt}]");
+
+                    contracts = FindOptionContracts(symbol.Value);
+                    break;
+                }
+                catch (WebException exception)
+                {
+                    Log.Error(exception);
+
+                    if (++attempt > MaxDownloadAttempts)
+                    {
+                        throw;
+                    }
+
+                    Thread.Sleep(1000);
+                }
+            }
+
+            return contracts;
         }
 
         /// <summary>
@@ -52,8 +91,10 @@ namespace QuantConnect.Lean.Engine.DataFeeds
 
             using (var client = new WebClient())
             {
+                // use QC url to bypass TLS issues with Mono pre-4.8 version
+                var url = "https://www.quantconnect.com/api/v2/theocc/series-search?symbolType=U&symbol=" + underlyingSymbol;
+
                 // download the text file
-                var url = "https://www.theocc.com/webapps/series-search?symbolType=U&symbol=" + underlyingSymbol;
                 var fileContent = client.DownloadString(url);
 
                 // read the lines, skipping the headers

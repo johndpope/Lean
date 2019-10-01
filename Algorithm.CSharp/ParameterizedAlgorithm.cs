@@ -1,11 +1,11 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
- * 
- * Licensed under the Apache License, Version 2.0 (the "License"); 
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -13,13 +13,20 @@
  * limitations under the License.
 */
 
+using System.Collections.Generic;
 using QuantConnect.Data.Market;
 using QuantConnect.Indicators;
 using QuantConnect.Parameters;
+using QuantConnect.Interfaces;
 
 namespace QuantConnect.Algorithm.CSharp
 {
-    public class ParameterizedAlgorithm : QCAlgorithm
+    /// <summary>
+    /// Demonstration of the parameter system of QuantConnect. Using parameters you can pass the values required into C# algorithms for optimization.
+    /// </summary>
+    /// <meta name="tag" content="optimization" />
+    /// <meta name="tag" content="using quantconnect" />
+    public class ParameterizedAlgorithm : QCAlgorithm, IRegressionAlgorithmDefinition
     {
         // we place attributes on top of our fields or properties that should receive
         // their values from the job. The values 100 and 200 are just default values that
@@ -59,5 +66,41 @@ namespace QuantConnect.Algorithm.CSharp
                 Liquidate("SPY");
             }
         }
+
+        /// <summary>
+        /// This is used by the regression test system to indicate if the open source Lean repository has the required data to run this algorithm.
+        /// </summary>
+        public bool CanRunLocally { get; } = true;
+
+        /// <summary>
+        /// This is used by the regression test system to indicate which languages this algorithm is written in.
+        /// </summary>
+        public Language[] Languages { get; } = { Language.CSharp, Language.Python };
+
+        /// <summary>
+        /// This is used by the regression test system to indicate what the expected statistics are from running the algorithm
+        /// </summary>
+        public Dictionary<string, string> ExpectedStatistics => new Dictionary<string, string>
+        {
+            {"Total Trades", "1"},
+            {"Average Win", "0%"},
+            {"Average Loss", "0%"},
+            {"Compounding Annual Return", "245.468%"},
+            {"Drawdown", "0.300%"},
+            {"Expectancy", "0"},
+            {"Net Profit", "1.713%"},
+            {"Sharpe Ratio", "9.786"},
+            {"Loss Rate", "0%"},
+            {"Win Rate", "0%"},
+            {"Profit-Loss Ratio", "0"},
+            {"Alpha", "0.656"},
+            {"Beta", "0.17"},
+            {"Annual Standard Deviation", "0.073"},
+            {"Annual Variance", "0.005"},
+            {"Information Ratio", "2.12"},
+            {"Tracking Error", "0.17"},
+            {"Treynor Ratio", "4.209"},
+            {"Total Fees", "$3.26"}
+        };
     }
 }

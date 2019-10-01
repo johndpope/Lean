@@ -1,11 +1,11 @@
 ﻿/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
- * 
- * Licensed under the Apache License, Version 2.0 (the "License"); 
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -25,7 +25,9 @@ using QuantConnect.Util;
 
 namespace QuantConnect.Tests.Common.Util
 {
-    [TestFixture]
+    // For now these tests are excluded from the Travis build because of occasional Yahoo server errors.
+    // In future they should be updated to read the Yahoo data from a local test file.
+    [TestFixture, Category("TravisExclude")]
     public class FactorFileGeneratorTests
     {
         private const string PermTick = "AAPL";
@@ -58,17 +60,17 @@ namespace QuantConnect.Tests.Common.Util
         [Test]
         public void FactorFile_CanBeCreatedFromYahooData_Successfully()
         {
-            var yahooEvents = _yahooDataDownloader.DownloadSplitAndDividendData(_symbol, DateTime.Parse("01/01/1980"), DateTime.MaxValue);
+            var yahooEvents = _yahooDataDownloader.DownloadSplitAndDividendData(_symbol, Parse.DateTime("01/01/1980"), DateTime.MaxValue);
             var factorFile = _factorFileGenerator.CreateFactorFile(yahooEvents.ToList());
 
             Assert.IsTrue(factorFile.Permtick == _symbol.Value);
         }
 
-        [Test]
+        [Test, Ignore("Fix me - GH issue 3435")]
         public void FactorFiles_CanBeGenerated_Accurately()
         {
             // Arrange
-            var yahooEvents = _yahooDataDownloader.DownloadSplitAndDividendData(_symbol, DateTime.Parse("01/01/1970"), DateTime.MaxValue);
+            var yahooEvents = _yahooDataDownloader.DownloadSplitAndDividendData(_symbol, Parse.DateTime("01/01/1970"), DateTime.MaxValue);
             var filePath = LeanData.GenerateRelativeFactorFilePath(_symbol);
             var tolerance = 0.00001m;
 

@@ -16,12 +16,12 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Threading;
+using System.Web;
 using NUnit.Framework;
 using QuantConnect.Api;
 using QuantConnect.API;
 using QuantConnect.Brokerages;
 using QuantConnect.Configuration;
-using RestSharp.Extensions.MonoHttp;
 
 namespace QuantConnect.Tests.API
 {
@@ -50,7 +50,7 @@ namespace QuantConnect.Tests.API
         [Test]
         public void Projects_CanBeCreatedAndDeleted_Successfully()
         {
-            var name = "Test Project " + DateTime.Now;
+            var name = "Test Project " + DateTime.Now.ToStringInvariant();
 
             //Test create a new project successfully
             var project = _api.CreateProject(name, Language.CSharp);
@@ -134,7 +134,7 @@ namespace QuantConnect.Tests.API
             };
 
             // Create a new project and make sure there are no files
-            var project = _api.CreateProject("Test project - " + DateTime.Now, Language.CSharp);
+            var project = _api.CreateProject($"Test project - {DateTime.Now.ToStringInvariant()}", Language.CSharp);
             Assert.IsTrue(project.Success);
             Assert.IsTrue(project.Projects.First().ProjectId > 0);
 
@@ -171,7 +171,7 @@ namespace QuantConnect.Tests.API
             // Delete the second file
             var deleteFile = _api.DeleteProjectFile(project.Projects.First().ProjectId, secondRealFile.Name);
             Assert.IsTrue(deleteFile.Success);
-            
+
             // Read files
             var readFilesAgain = _api.ReadProjectFiles(project.Projects.First().ProjectId);
             Assert.IsTrue(readFilesAgain.Success);
@@ -196,7 +196,7 @@ namespace QuantConnect.Tests.API
             BrokerageEnvironment environment = BrokerageEnvironment.Paper;
             string account = "";
 
-            // Oanda Custom Variables 
+            // Oanda Custom Variables
             string accessToken = "";
             var dateIssuedString = "20160920";
 
@@ -238,7 +238,7 @@ namespace QuantConnect.Tests.API
                         accessToken = Config.Get("oanda-access-token");
                         account     = Config.Get("oanda-account-id");
 
-                        settings = new OandaLiveAlgorithmSettings(accessToken, environment, account); 
+                        settings = new OandaLiveAlgorithmSettings(accessToken, environment, account);
                         Assert.IsTrue(settings.Id == BrokerageName.OandaBrokerage.ToString());
                         break;
                     case BrokerageName.TradierBrokerage:
@@ -250,7 +250,7 @@ namespace QuantConnect.Tests.API
 
                         break;
                     default:
-                        throw new Exception("Settings have not been implemented for this brokerage: " + brokerageName.ToString());
+                        throw new Exception($"Settings have not been implemented for this brokerage: {brokerageName}");
                 }
 
                 // Tests common to all brokerage configuration classes
@@ -329,7 +329,7 @@ namespace QuantConnect.Tests.API
             };
 
             // Create a new project
-            var project = _api.CreateProject("Test project - " + DateTime.Now, Language.CSharp);
+            var project = _api.CreateProject($"Test project - {DateTime.Now.ToStringInvariant()}", Language.CSharp);
             Assert.IsTrue(project.Success);
 
             // Add Project Files
@@ -384,10 +384,10 @@ namespace QuantConnect.Tests.API
                 Name = "main.cs",
                 Code = File.ReadAllText("../../../Algorithm.CSharp/BasicTemplateAlgorithm.cs")
             };
-             
+
 
             // Create a new project
-            var project = _api.CreateProject("Test project - " + DateTime.Now, Language.CSharp);
+            var project = _api.CreateProject($"Test project - {DateTime.Now.ToStringInvariant()}", Language.CSharp);
 
             // Add Project Files
             var addProjectFile = _api.AddProjectFile(project.Projects.First().ProjectId, file.Name, file.Code);
@@ -441,7 +441,7 @@ namespace QuantConnect.Tests.API
                 };
 
             // Create a new project
-            var project = _api.CreateProject("Test project - " + DateTime.Now, Language.CSharp);
+            var project = _api.CreateProject($"Test project - {DateTime.Now.ToStringInvariant()}", Language.CSharp);
 
             // Add Project Files
             var addProjectFile = _api.AddProjectFile(project.Projects.First().ProjectId, file.Name, file.Code);
@@ -497,7 +497,7 @@ namespace QuantConnect.Tests.API
             };
 
             // Create a new project
-            var project = _api.CreateProject("Test project - " + DateTime.Now, Language.CSharp);
+            var project = _api.CreateProject($"Test project - {DateTime.Now.ToStringInvariant()}", Language.CSharp);
 
             // Add Project Files
             var addProjectFile = _api.AddProjectFile(project.Projects.First().ProjectId, file.Name, file.Code);
@@ -597,6 +597,47 @@ namespace QuantConnect.Tests.API
         }
 
         /// <summary>
+        /// Test read price API for given symbol
+        /// </summary>
+        [Test]
+        public void ReadPriceWorksCorrectlyFor1Symbol()
+        {
+            var spy = Symbol.Create("SPY", SecurityType.Equity, Market.USA);
+            var pricesList = _api.ReadPrices(new [] { spy });
+
+            Assert.IsTrue(pricesList.Success);
+            Assert.AreEqual(pricesList.Prices.Count, 1);
+
+            var price = pricesList.Prices.First();
+            Assert.AreEqual(price.Symbol, spy);
+            Assert.AreNotEqual(price.Price, 0);
+            var updated = price.Updated;
+            var reference = DateTime.UtcNow.Subtract(TimeSpan.FromDays(3));
+            Assert.IsTrue(updated > reference);
+        }
+
+        /// <summary>
+        /// Test read price API for multiple symbols
+        /// </summary>
+        [Test]
+        public void ReadPriceWorksCorrectlyForMultipleSymbols()
+        {
+            var spy = Symbol.Create("SPY", SecurityType.Equity, Market.USA);
+            var aapl = Symbol.Create("AAPL", SecurityType.Equity, Market.USA);
+            var pricesList = _api.ReadPrices(new[] { spy, aapl });
+
+            Assert.IsTrue(pricesList.Success);
+            Assert.AreEqual(pricesList.Prices.Count, 2);
+
+            Assert.IsTrue(pricesList.Prices.All(x => x.Price != 0));
+            Assert.AreEqual(pricesList.Prices.Count(x => x.Symbol == aapl), 1);
+            Assert.AreEqual(pricesList.Prices.Count(x => x.Symbol == spy), 1);
+
+            var reference = DateTime.UtcNow.Subtract(TimeSpan.FromDays(3));
+            Assert.IsTrue(pricesList.Prices.All(x => x.Updated > reference));
+        }
+
+        /// <summary>
         /// Test downloading non existent data
         /// </summary>
         [Test]
@@ -617,7 +658,7 @@ namespace QuantConnect.Tests.API
             var language = Language.CSharp;
             var code = File.ReadAllText("../../../Algorithm.CSharp/BasicTemplateAlgorithm.cs");
             var algorithmName = "main.cs";
-            var projectName = DateTime.UtcNow.ToString("u") + " Test " + _testAccount + " Lang " + language;
+            var projectName = $"{DateTime.UtcNow.ToStringInvariant("u")} Test {_testAccount} Lang {language}";
 
             Perform_CreateCompileBactest_Tests(projectName, language, algorithmName, code);
         }
@@ -631,7 +672,7 @@ namespace QuantConnect.Tests.API
             var language = Language.FSharp;
             var code = File.ReadAllText("../../../Algorithm.FSharp/BasicTemplateAlgorithm.fs");
             var algorithmName = "main.fs";
-            var projectName = DateTime.UtcNow.ToString("u") + " Test " + _testAccount + " Lang " + language;
+            var projectName = $"{DateTime.UtcNow.ToStringInvariant("u")} Test {_testAccount} Lang {language}";
 
             Perform_CreateCompileBactest_Tests(projectName, language, algorithmName, code);
         }
@@ -646,9 +687,34 @@ namespace QuantConnect.Tests.API
             var code = File.ReadAllText("../../../Algorithm.Python/BasicTemplateAlgorithm.py");
             var algorithmName = "main.py";
 
-            var projectName = DateTime.UtcNow.ToString("u") + " Test " + _testAccount + " Lang " + language;
+            var projectName = $"{DateTime.UtcNow.ToStringInvariant("u")} Test {_testAccount} Lang {language}";
 
             Perform_CreateCompileBactest_Tests(projectName, language, algorithmName, code);
+        }
+
+        [Test]
+        public void GetsSplits()
+        {
+            var date = new DateTime(2014, 06, 09);
+            var AAPL = new Symbol(SecurityIdentifier.Parse("AAPL R735QTJ8XC9X"), "AAPL");
+            var splits = _api.GetSplits(date, date);
+            var aapl = splits.Single(s => s.Symbol == AAPL);
+            Assert.AreEqual((1 / 7m).RoundToSignificantDigits(6), aapl.SplitFactor);
+            Assert.AreEqual(date, aapl.Time);
+            Assert.AreEqual(SplitType.SplitOccurred, aapl.Type);
+            Assert.AreEqual(645.57m, aapl.ReferencePrice);
+        }
+
+        [Test]
+        public void GetDividends()
+        {
+            var date = new DateTime(2018, 05, 11);
+            var AAPL = new Symbol(SecurityIdentifier.Parse("AAPL R735QTJ8XC9X"), "AAPL");
+            var dividends = _api.GetDividends(date, date);
+            var aapl = dividends.Single(s => s.Symbol == AAPL);
+            Assert.AreEqual(0.73m, aapl.Distribution);
+            Assert.AreEqual(date, aapl.Time);
+            Assert.AreEqual(190.03m, aapl.ReferencePrice);
         }
 
         private void Perform_CreateCompileBactest_Tests(string projectName, Language language, string algorithmName, string code)
@@ -697,7 +763,7 @@ namespace QuantConnect.Tests.API
             Assert.IsTrue(compileError.State == CompileState.BuildError); //Resulting in build fail.
 
             // Using our successful compile; launch a backtest!
-            var backtestName = DateTime.Now.ToString("u") + " API Backtest";
+            var backtestName = $"{DateTime.Now.ToStringInvariant("u")} API Backtest";
             var backtest = _api.CreateBacktest(project.Projects.First().ProjectId, compileSuccess.CompileId, backtestName);
             Assert.IsTrue(backtest.Success);
 
@@ -722,7 +788,7 @@ namespace QuantConnect.Tests.API
             Assert.IsTrue(backtestRead.Name == backtestName);
 
             //Update the note and make sure its been updated:
-            var newNote = DateTime.Now.ToString("u");
+            var newNote = DateTime.Now.ToStringInvariant("u");
             var noteBacktest = _api.UpdateBacktest(project.Projects.First().ProjectId, backtest.BacktestId, note: newNote);
             Assert.IsTrue(noteBacktest.Success);
             backtestRead = _api.ReadBacktest(project.Projects.First().ProjectId, backtest.BacktestId);

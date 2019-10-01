@@ -1,11 +1,11 @@
 /*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
- * 
- * Licensed under the Apache License, Version 2.0 (the "License"); 
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -17,11 +17,12 @@ using System;
 using System.Globalization;
 using QuantConnect.Logging;
 using QuantConnect.Util;
+using static QuantConnect.StringExtensions;
 
 namespace QuantConnect.Data.Market
 {
     /// <summary>
-    /// QuoteBar class for second and minute resolution data: 
+    /// QuoteBar class for second and minute resolution data:
     /// An OHLC implementation of the QuantConnect BaseData class with parameters for candles.
     /// </summary>
     public class QuoteBar : BaseData, IBaseDataBar
@@ -33,7 +34,7 @@ namespace QuantConnect.Data.Market
         /// Average bid size
         /// </summary>
         public decimal LastBidSize { get; set; }
-        
+
         /// <summary>
         /// Average ask size
         /// </summary>
@@ -246,11 +247,11 @@ namespace QuantConnect.Data.Market
             if (Ask == null && askPrice != 0) Ask = new Bar();
             if (Ask != null) Ask.Update(askPrice);
 
-            if (bidSize > 0) 
+            if (bidSize > 0)
             {
                 LastBidSize = bidSize;
             }
-            
+
             if (askSize > 0)
             {
                 LastAskSize = askSize;
@@ -272,40 +273,33 @@ namespace QuantConnect.Data.Market
         /// <returns>Enumerable iterator for returning each line of the required data.</returns>
         public override BaseData Reader(SubscriptionDataConfig config, string line, DateTime date, bool isLiveMode)
         {
-            var csvLength = line.Split(',').Length;
-
             try
             {
-                // "Scaffold" code - simple check to see how the data is formatted and decide how to parse appropriately
-                // TODO: Once all FX is reprocessed to QuoteBars, remove this check
-                if (csvLength > 5)
+                switch (config.SecurityType)
                 {
-                    switch (config.SecurityType)
-                    {
-                        case SecurityType.Equity:
-                            return ParseEquity(config, line, date);
+                    case SecurityType.Equity:
+                        return ParseEquity(config, line, date);
 
-                        case SecurityType.Forex:
-                            return ParseForex(config, line, date);
+                    case SecurityType.Forex:
+                    case SecurityType.Crypto:
+                        return ParseForex(config, line, date);
 
-                        case SecurityType.Cfd:
-                            return ParseCfd(config, line, date);
+                    case SecurityType.Cfd:
+                        return ParseCfd(config, line, date);
 
-                        case SecurityType.Option:
-                            return ParseOption(config, line, date);
+                    case SecurityType.Option:
+                        return ParseOption(config, line, date);
 
-                        case SecurityType.Future:
-                            return ParseFuture(config, line, date);
-                    }
+                    case SecurityType.Future:
+                        return ParseFuture(config, line, date);
+
                 }
-
-                // Parse as trade
-                return ParseTradeAsQuoteBar(config, date, line);
             }
             catch (Exception err)
             {
-                Log.Error("QuoteBar.Reader(): Error parsing line: '{0}', Symbol: {1}, SecurityType: {2}, Resolution: {3}, Date: {4}, Message: {5}", 
-                    line, config.Symbol.Value, config.SecurityType, config.Resolution, date.ToString("yyyy-MM-dd"), err);
+                Log.Error(Invariant($"QuoteBar.Reader(): Error parsing line: '{line}', Symbol: {config.Symbol.Value}, SecurityType: {config.SecurityType}, ") +
+                    Invariant($"Resolution: {config.Resolution}, Date: {date.ToStringInvariant("yyyy-MM-dd")}, Message: {err}")
+                );
             }
 
             // if we couldn't parse it above return a default instance
@@ -445,7 +439,7 @@ namespace QuantConnect.Data.Market
         private QuoteBar ParseQuote(SubscriptionDataConfig config, DateTime date, string line, bool useScaleFactor)
         {
             var scaleFactor = useScaleFactor
-                              ? _scaleFactor 
+                              ? _scaleFactor
                               : 1;
 
             var quoteBar = new QuoteBar
@@ -463,7 +457,7 @@ namespace QuantConnect.Data.Market
             else
             {
                 // Using custom "ToDecimal" conversion for speed on high resolution data.
-                quoteBar.Time = date.Date.AddMilliseconds(csv[0].ToInt32()).ConvertTo(config.DataTimeZone, config.ExchangeTimeZone);
+                quoteBar.Time = date.Date.AddMilliseconds((double)csv[0].ToDecimal()).ConvertTo(config.DataTimeZone, config.ExchangeTimeZone);
             }
 
             // only create the bid if it exists in the file
@@ -471,10 +465,10 @@ namespace QuantConnect.Data.Market
             {
                 quoteBar.Bid = new Bar
                 {
-                    Open = config.GetNormalizedPrice(csv[1].ToDecimal() * scaleFactor),
-                    High = config.GetNormalizedPrice(csv[2].ToDecimal() * scaleFactor),
-                    Low = config.GetNormalizedPrice(csv[3].ToDecimal() * scaleFactor),
-                    Close = config.GetNormalizedPrice(csv[4].ToDecimal() * scaleFactor)
+                    Open = csv[1].ToDecimal() * scaleFactor,
+                    High = csv[2].ToDecimal() * scaleFactor,
+                    Low = csv[3].ToDecimal() * scaleFactor,
+                    Close = csv[4].ToDecimal() * scaleFactor
                 };
                 quoteBar.LastBidSize = csv[5].ToDecimal();
             }
@@ -488,10 +482,10 @@ namespace QuantConnect.Data.Market
             {
                 quoteBar.Ask = new Bar
                 {
-                    Open = config.GetNormalizedPrice(csv[6].ToDecimal() * scaleFactor),
-                    High = config.GetNormalizedPrice(csv[7].ToDecimal() * scaleFactor),
-                    Low = config.GetNormalizedPrice(csv[8].ToDecimal() * scaleFactor),
-                    Close = config.GetNormalizedPrice(csv[9].ToDecimal() * scaleFactor)
+                    Open = csv[6].ToDecimal() * scaleFactor,
+                    High = csv[7].ToDecimal() * scaleFactor,
+                    Low = csv[8].ToDecimal() * scaleFactor,
+                    Close = csv[9].ToDecimal() * scaleFactor
                 };
                 quoteBar.LastAskSize = csv[10].ToDecimal();
             }
@@ -549,17 +543,31 @@ namespace QuantConnect.Data.Market
             };
         }
 
-
         /// <summary>
         /// Collapses QuoteBars into TradeBars object when
         ///  algorithm requires FX data, but calls OnData(<see cref="TradeBars"/>)
         /// TODO: (2017) Remove this method in favor of using OnData(<see cref="Slice"/>)
         /// </summary>
         /// <returns><see cref="TradeBars"/></returns>
-        [Obsolete("For backwards compatibility only.  When FX data is traded, all algorithms should use OnData(Slice)")]
         public TradeBar Collapse()
         {
-            return new TradeBar(EndTime, Symbol, Open, High, Low, Close, 0);
+            return new TradeBar(Time, Symbol, Open, High, Low, Close, 0)
+            {
+                Period = Period
+            };
+        }
+
+        public override string ToString()
+        {
+            return $"{Symbol}: " +
+                   $"Bid: O: {Bid?.Open.SmartRounding()} " +
+                   $"Bid: H: {Bid?.High.SmartRounding()} " +
+                   $"Bid: L: {Bid?.Low.SmartRounding()} " +
+                   $"Bid: C: {Bid?.Close.SmartRounding()} " +
+                   $"Ask: O: {Ask?.Open.SmartRounding()} " +
+                   $"Ask: H: {Ask?.High.SmartRounding()} " +
+                   $"Ask: L: {Ask?.Low.SmartRounding()} " +
+                   $"Ask: C: {Ask?.Close.SmartRounding()} ";
         }
     }
 }

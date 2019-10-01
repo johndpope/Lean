@@ -1,11 +1,11 @@
 ﻿/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
- * 
- * Licensed under the Apache License, Version 2.0 (the "License"); 
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -18,6 +18,7 @@ using System;
 using System.IO;
 using QuantConnect.Data;
 using QuantConnect.Interfaces;
+using QuantConnect.Logging;
 
 namespace QuantConnect.Lean.Engine.DataFeeds
 {
@@ -37,20 +38,41 @@ namespace QuantConnect.Lean.Engine.DataFeeds
         /// <returns>A new <see cref="ISubscriptionDataSourceReader"/> that can read the specified <paramref name="source"/></returns>
         public static ISubscriptionDataSourceReader ForSource(SubscriptionDataSource source, IDataCacheProvider dataCacheProvider, SubscriptionDataConfig config, DateTime date, bool isLiveMode)
         {
+            ISubscriptionDataSourceReader reader;
+            TextSubscriptionDataSourceReader textReader = null;
             switch (source.Format)
             {
                 case FileFormat.Csv:
-                    return new TextSubscriptionDataSourceReader(dataCacheProvider, config, date, isLiveMode);
+                    reader = textReader = new TextSubscriptionDataSourceReader(dataCacheProvider, config, date, isLiveMode);
+                    break;
 
                 case FileFormat.Collection:
-                    return new CollectionSubscriptionDataSourceReader(dataCacheProvider, config, date, isLiveMode);
+                    reader = new CollectionSubscriptionDataSourceReader(dataCacheProvider, config, date, isLiveMode);
+                    break;
 
                 case FileFormat.ZipEntryName:
-                    return new ZipEntryNameSubscriptionDataSourceReader(dataCacheProvider, config, date, isLiveMode);
+                    reader = new ZipEntryNameSubscriptionDataSourceReader(config, date, isLiveMode);
+                    break;
 
                 default:
                     throw new NotImplementedException("SubscriptionFactory.ForSource(" + source + ") has not been implemented yet.");
             }
+
+            // wire up event handlers for logging missing files
+            if (source.TransportMedium == SubscriptionTransportMedium.LocalFile)
+            {
+                var factory = config.GetBaseDataInstance();
+                if (!factory.IsSparseData())
+                {
+                    reader.InvalidSource += (sender, args) => Log.Error($"SubscriptionDataSourceReader.InvalidSource(): File not found: {args.Source.Source}");
+                    if (textReader != null)
+                    {
+                        textReader.CreateStreamReaderError += (sender, args) => Log.Error($"SubscriptionDataSourceReader.CreateStreamReaderError(): File not found: {args.Source.Source}");
+                    }
+                }
+            }
+
+            return reader;
         }
 
         /// <summary>

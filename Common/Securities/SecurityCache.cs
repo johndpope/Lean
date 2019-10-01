@@ -1,11 +1,11 @@
 /*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
- * 
- * Licensed under the Apache License, Version 2.0 (the "License"); 
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -15,24 +15,32 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Linq;
 using QuantConnect.Data;
 using QuantConnect.Data.Market;
+using QuantConnect.Util;
 
-namespace QuantConnect.Securities 
+namespace QuantConnect.Securities
 {
     /// <summary>
     /// Base class caching caching spot for security data and any other temporary properties.
     /// </summary>
     /// <remarks>
-    /// This class is virtually unused and will soon be made obsolete. 
+    /// This class is virtually unused and will soon be made obsolete.
     /// This comment made in a remark to prevent obsolete errors in all users algorithms
     /// </remarks>
     public class SecurityCache
     {
+        /// <summary>
+        /// Event raised each time this cache stores data
+        /// </summary>
+        public event EventHandler<SecurityCacheDataStoredEventArgs> DataStored;
+
         // this is used to prefer quote bar data over the tradebar data
         private DateTime _lastQuoteBarUpdate;
         private BaseData _lastData;
-        private readonly ConcurrentDictionary<Type, BaseData> _dataByType = new ConcurrentDictionary<Type, BaseData>();
+        private readonly ConcurrentDictionary<Type, IReadOnlyList<BaseData>> _dataByType = new ConcurrentDictionary<Type, IReadOnlyList<BaseData>>();
 
         /// <summary>
         /// Gets the most recent price submitted to this cache
@@ -91,6 +99,10 @@ namespace QuantConnect.Securities
 
         /// <summary>
         /// Add a new market data point to the local security cache for the current market price.
+        /// Rules:
+        ///     Don't cache fill forward data.
+        ///     Always return the last observation.
+        ///     If two consecutive data has the same time stamp and one is Quotebars and the other Tradebar, prioritize the Quotebar.
         /// </summary>
         public void AddData(BaseData data)
         {
@@ -101,20 +113,59 @@ namespace QuantConnect.Securities
                 return;
             }
 
-            _lastData = data;
-            _dataByType[data.GetType()] = data;
-
             var tick = data as Tick;
+            if (tick?.TickType == TickType.OpenInterest)
+            {
+                OpenInterest = (long)tick.Value;
+                return;
+            }
+
+            // Only cache non fill-forward data.
+            if (data.IsFillForward) return;
+
+            // Always keep track of the last observation
+            IReadOnlyList<BaseData> list;
+            if (!_dataByType.TryGetValue(data.GetType(), out list))
+            {
+                list = new List<BaseData> {data};
+                _dataByType[data.GetType()] = list;
+            }
+            else
+            {
+                // we KNOW this one is actually a list, so this is safe
+                // we overwrite the zero entry so we're not constantly newing up lists
+                ((List<BaseData>) list)[0] = data;
+            }
+
+            // don't set _lastData if receive quotebar then tradebar w/ same end time. this
+            // was implemented to grant preference towards using quote data in the fill
+            // models and provide a level of determinism on the values exposed via the cache.
+            if (_lastData == null
+              || _lastQuoteBarUpdate != data.EndTime
+              || data.DataType != MarketDataType.TradeBar )
+            {
+                _lastData = data;
+            }
+
             if (tick != null)
             {
                 if (tick.Value != 0) Price = tick.Value;
 
-                if (tick.BidPrice != 0) BidPrice = tick.BidPrice;
-                if (tick.BidSize != 0) BidSize = tick.BidSize;
+                if (tick.TickType == TickType.Trade && tick.Quantity != 0)
+                {
+                    Volume = tick.Quantity;
+                }
+                if (tick.TickType == TickType.Quote)
+                {
+                    if (tick.BidPrice != 0) BidPrice = tick.BidPrice;
+                    if (tick.BidSize != 0) BidSize = tick.BidSize;
 
-                if (tick.AskPrice != 0) AskPrice = tick.AskPrice;
-                if (tick.AskSize != 0) AskSize = tick.AskSize;
+                    if (tick.AskPrice != 0) AskPrice = tick.AskPrice;
+                    if (tick.AskSize != 0) AskSize = tick.AskSize;
+                }
+                return;
             }
+
             var bar = data as IBar;
             if (bar != null)
             {
@@ -135,6 +186,7 @@ namespace QuantConnect.Securities
                 {
                     if (tradeBar.Volume != 0) Volume = tradeBar.Volume;
                 }
+
                 var quoteBar = bar as QuoteBar;
                 if (quoteBar != null)
                 {
@@ -145,14 +197,37 @@ namespace QuantConnect.Securities
                     if (quoteBar.LastAskSize != 0) AskSize = quoteBar.LastAskSize;
                 }
             }
-            else
+            else if (data.DataType != MarketDataType.Auxiliary)
             {
                 Price = data.Price;
             }
         }
 
         /// <summary>
-        /// Get last data packet recieved for this security
+        /// Stores the specified data list in the cache WITHOUT updating any of the cache properties, such as Price
+        /// </summary>
+        /// <param name="data">The collection of data to store in this cache</param>
+        public void StoreData(IReadOnlyList<BaseData> data)
+        {
+            if (data.Count == 0)
+            {
+                return;
+            }
+
+#if DEBUG // don't run this in release as we should never fail here, but it's also nice to have here as documentation of intent
+            if (data.DistinctBy(d => d.GetType()).Skip(1).Any())
+            {
+                throw new ArgumentException("SecurityCache.StoreData data list must contain elements of the same type.");
+            }
+#endif
+
+            var dataType = data[0].GetType();
+            _dataByType[dataType] = data;
+            OnDataStored(dataType, data);
+        }
+
+        /// <summary>
+        /// Get last data packet received for this security
         /// </summary>
         /// <returns>BaseData type of the security</returns>
         public BaseData GetData()
@@ -166,11 +241,30 @@ namespace QuantConnect.Securities
         /// <typeparam name="T">The data type</typeparam>
         /// <returns>The last data packet, null if none received of type</returns>
         public T GetData<T>()
-            where T:BaseData
+            where T : BaseData
         {
-            BaseData data;
-            _dataByType.TryGetValue(typeof (T), out data);
-            return data as T;
+            IReadOnlyList<BaseData> list;
+            if (!_dataByType.TryGetValue(typeof(T), out list) || list.Count == 0)
+            {
+                return default(T);
+            }
+
+            return list.LastOrDefault() as T;
+        }
+
+        /// <summary>
+        /// Gets all data points of the specified type from the most recent time step
+        /// that produced data for that type
+        /// </summary>
+        public IEnumerable<T> GetAll<T>()
+        {
+            IReadOnlyList<BaseData> list;
+            if (!_dataByType.TryGetValue(typeof(T), out list))
+            {
+                return new List<T>();
+            }
+
+            return list.Cast<T>();
         }
 
         /// <summary>
@@ -179,6 +273,14 @@ namespace QuantConnect.Securities
         public void Reset()
         {
             _dataByType.Clear();
+        }
+
+        /// <summary>
+        /// Event invocator for the <see cref="DataStored"/> event
+        /// </summary>
+        protected virtual void OnDataStored(Type dataType, IReadOnlyList<BaseData> data)
+        {
+            DataStored?.Invoke(this, new SecurityCacheDataStoredEventArgs(dataType, data));
         }
     }
 }

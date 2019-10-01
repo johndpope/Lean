@@ -1,11 +1,11 @@
 ﻿/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
- * 
- * Licensed under the Apache License, Version 2.0 (the "License"); 
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -19,8 +19,7 @@ using System.Linq;
 using System.Linq.Expressions;
 using CloneExtensions;
 using Fasterflect;
-using Python.Runtime;
-using QuantConnect.Python;
+using QuantConnect.Logging;
 
 namespace QuantConnect.Util
 {
@@ -52,18 +51,6 @@ namespace QuantConnect.Util
         {
             lock (_lock)
             {
-                // Special case: if base type is PythonData, we will the special factory with a PyObject
-                if (dataType.BaseType == typeof(PythonData))
-                {
-                    dataType = typeof(PythonData);
-                }
-
-                // Special case: if base type is PythonQuandl, we will the special factory with a PyObject
-                if (dataType.BaseType == typeof(PythonQuandl))
-                {
-                    dataType = typeof(PythonQuandl);
-                }
-
                 // if we already have it, just use it
                 Func<object[], object> factory;
                 if (_activatorsByType.TryGetValue(dataType, out factory))
@@ -132,34 +119,26 @@ namespace QuantConnect.Util
             var clone = Clone((object)instanceToClone) as T;
             if (clone == null)
             {
-                throw new Exception("Unable to clone instance of type " + instanceToClone.GetType().Name + " to " + typeof(T).Name);
+                throw new ArgumentException($"Unable to clone instance of type {instanceToClone.GetType().Name} to {typeof(T).Name}");
             }
             return clone;
         }
 
         /// <summary>
-        /// Creates an activator for PythonData type
+        /// Adds method to return an instance of object
         /// </summary>
-        /// <param name="module">The algorithm python module</param>
-        public static void SetPythonModule(PyObject module)
+        /// <param name="key">The key of the method to add</param>
+        /// <param name="value">The value of the method to add</param>
+        public static void AddActivator(Type key, Func<object[], object> value)
         {
-            _activatorsByType[typeof(PythonData)] = type =>
+            if (!_activatorsByType.ContainsKey(key))
             {
-                using (Py.GIL())
-                {
-                    var instance = module.GetAttr(((Type)type[0]).Name).Invoke();
-                    return new PythonData(instance);
-                }
-            };
-
-            _activatorsByType[typeof(PythonQuandl)] = type =>
+                _activatorsByType.Add(key, value);
+            }
+            else
             {
-                using (Py.GIL())
-                {
-                    var instance = module.GetAttr(((Type)type[0]).Name).Invoke();
-                    return new PythonQuandl(instance.GetAttr("ValueColumnName").ToString());
-                }
-            };
+                throw new ArgumentException($"ObjectActivator.AddActivator(): a method to return an instance of {key.Name} has already been added");
+            }
         }
 
         /// <summary>

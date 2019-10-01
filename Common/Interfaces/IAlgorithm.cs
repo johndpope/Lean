@@ -25,17 +25,39 @@ using QuantConnect.Orders;
 using QuantConnect.Scheduling;
 using QuantConnect.Securities;
 using System.Collections.Concurrent;
+using QuantConnect.Algorithm.Framework.Alphas;
 using QuantConnect.Securities.Future;
 using QuantConnect.Securities.Option;
 
 namespace QuantConnect.Interfaces
 {
     /// <summary>
+    /// Defines an event fired from within an algorithm instance.
+    /// </summary>
+    /// <typeparam name="T">The event type</typeparam>
+    /// <param name="algorithm">The algorithm that fired the event</param>
+    /// <param name="eventData">The event data</param>
+    public delegate void AlgorithmEvent<in T>(IAlgorithm algorithm, T eventData);
+
+    /// <summary>
     /// Interface for QuantConnect algorithm implementations. All algorithms must implement these
     /// basic members to allow interaction with the Lean Backtesting Engine.
     /// </summary>
-    public interface IAlgorithm
+    public interface IAlgorithm : ISecurityInitializerProvider, IAccountCurrencyProvider
     {
+        /// <summary>
+        /// Event fired when an algorithm generates a insight
+        /// </summary>
+        event AlgorithmEvent<GeneratedInsightsCollection> InsightsGenerated;
+
+        /// <summary>
+        /// Gets the time keeper instance
+        /// </summary>
+        ITimeKeeper TimeKeeper
+        {
+            get;
+        }
+
         /// <summary>
         /// Data subscription manager controls the information and subscriptions the algorithms recieves.
         /// Subscription configurations can be added through the Subscription Manager.
@@ -121,7 +143,7 @@ namespace QuantConnect.Interfaces
         /// </summary>
         IHistoryProvider HistoryProvider
         {
-            get; 
+            get;
             set;
         }
 
@@ -130,7 +152,7 @@ namespace QuantConnect.Interfaces
         /// </summary>
         AlgorithmStatus Status
         {
-            get; 
+            get;
             set;
         }
 
@@ -149,6 +171,7 @@ namespace QuantConnect.Interfaces
         string Name
         {
             get;
+            set;
         }
 
         /// <summary>
@@ -261,14 +284,6 @@ namespace QuantConnect.Interfaces
         /// the value of the benchmark at a requested date/time
         /// </summary>
         IBenchmark Benchmark
-        { 
-            get;
-        }
-
-        /// <summary>
-        /// Gets an instance that is to be used to initialize newly created securities.
-        /// </summary>
-        ISecurityInitializer SecurityInitializer
         {
             get;
         }
@@ -284,7 +299,7 @@ namespace QuantConnect.Interfaces
         /// <summary>
         /// Gets the user settings for the algorithm
         /// </summary>
-        AlgorithmSettings Settings
+        IAlgorithmSettings Settings
         {
             get;
         }
@@ -298,6 +313,19 @@ namespace QuantConnect.Interfaces
         }
 
         /// <summary>
+        /// Gets the future chain provider, used to get the list of future contracts for an underlying symbol
+        /// </summary>
+        IFutureChainProvider FutureChainProvider
+        {
+            get;
+        }
+
+        /// <summary>
+        /// Returns the current Slice object
+        /// </summary>
+        Slice CurrentSlice { get; }
+
+        /// <summary>
         /// Initialise the Algorithm and Prepare Required Data:
         /// </summary>
         void Initialize();
@@ -307,6 +335,11 @@ namespace QuantConnect.Interfaces
         /// the data gather in the Initialize method
         /// </summary>
         void PostInitialize();
+
+        /// <summary>
+        /// Called when the algorithm has completed initialization and warm up.
+        /// </summary>
+        void OnWarmupFinished();
 
         /// <summary>
         /// Gets the parameter with the specified name. If a parameter
@@ -355,10 +388,28 @@ namespace QuantConnect.Interfaces
         void OnData(Slice slice);
 
         /// <summary>
-        /// Event fired each time the we add/remove securities from the data feed
+        /// Used to send data updates to algorithm framework models
         /// </summary>
-        /// <param name="changes"></param>
+        /// <param name="slice">The current data slice</param>
+        void OnFrameworkData(Slice slice);
+
+        /// <summary>
+        /// Event fired each time that we add/remove securities from the data feed
+        /// </summary>
+        /// <param name="changes">Security additions/removals for this time step</param>
         void OnSecuritiesChanged(SecurityChanges changes);
+
+        /// <summary>
+        /// Used to send security changes to algorithm framework models
+        /// </summary>
+        /// <param name="changes">Security additions/removals for this time step</param>
+        void OnFrameworkSecuritiesChanged(SecurityChanges changes);
+
+        /// <summary>
+        /// Invoked at the end of every time step. This allows the algorithm
+        /// to process events before advancing to the next time step.
+        /// </summary>
+        void OnEndOfTimeStep();
 
         /// <summary>
         /// Send debug message
@@ -385,13 +436,16 @@ namespace QuantConnect.Interfaces
         void OnMarginCall(List<SubmitOrderRequest> requests);
 
         /// <summary>
-        /// Margin call warning event handler. This method is called when Portoflio.MarginRemaining is under 5% of your Portfolio.TotalPortfolioValue
+        /// Margin call warning event handler. This method is called when Portfolio.MarginRemaining is under 5% of your Portfolio.TotalPortfolioValue
         /// </summary>
         void OnMarginCallWarning();
 
         /// <summary>
         /// Call this method at the end of each day of data.
         /// </summary>
+        /// <remarks>Deprecated because different assets have different market close times,
+        /// and because Python does not support two methods with the same name</remarks>
+        [Obsolete("This method is deprecated. Please use this overload: OnEndOfDay(Symbol symbol)")]
         void OnEndOfDay();
 
         /// <summary>
@@ -456,6 +510,12 @@ namespace QuantConnect.Interfaces
         bool GetLocked();
 
         /// <summary>
+        /// Add a Chart object to algorithm collection
+        /// </summary>
+        /// <param name="chart">Chart object to add to collection.</param>
+        void AddChart(Chart chart);
+
+        /// <summary>
         /// Get the chart updates since the last request:
         /// </summary>
         /// <param name="clearChartData"></param>
@@ -502,6 +562,14 @@ namespace QuantConnect.Interfaces
         bool RemoveSecurity(Symbol symbol);
 
         /// <summary>
+        /// Sets the account currency cash symbol this algorithm is to manage.
+        /// </summary>
+        /// <remarks>Has to be called during <see cref="Initialize"/> before
+        /// calling <see cref="SetCash(decimal)"/> or adding any <see cref="Security"/></remarks>
+        /// <param name="accountCurrency">The account currency cash symbol to set</param>
+        void SetAccountCurrency(string accountCurrency);
+
+        /// <summary>
         /// Set the starting capital for the strategy
         /// </summary>
         /// <param name="startingCash">decimal starting capital, default $100,000</param>
@@ -513,7 +581,7 @@ namespace QuantConnect.Interfaces
         /// <param name="symbol">The cash symbol to set</param>
         /// <param name="startingCash">Decimal cash value of portfolio</param>
         /// <param name="conversionRate">The current conversion rate for the</param>
-        void SetCash(string symbol, decimal startingCash, decimal conversionRate);
+        void SetCash(string symbol, decimal startingCash, decimal conversionRate = 0);
 
         /// <summary>
         /// Liquidate your portfolio holdings:
@@ -554,7 +622,7 @@ namespace QuantConnect.Interfaces
         /// </summary>
         /// <param name="handler">The message handler to use</param>
         void SetBrokerageMessageHandler(IBrokerageMessageHandler handler);
-        
+
         /// <summary>
         /// Set the historical data provider
         /// </summary>
@@ -584,5 +652,30 @@ namespace QuantConnect.Interfaces
         /// </summary>
         /// <param name="optionChainProvider">The option chain provider</param>
         void SetOptionChainProvider(IOptionChainProvider optionChainProvider);
+
+        /// <summary>
+        /// Sets the future chain provider, used to get the list of future contracts for an underlying symbol
+        /// </summary>
+        /// <param name="futureChainProvider">The future chain provider</param>
+        void SetFutureChainProvider(IFutureChainProvider futureChainProvider);
+
+        /// <summary>
+        /// Sets the current slice
+        /// </summary>
+        /// <param name="slice">The Slice object</param>
+        void SetCurrentSlice(Slice slice);
+
+        /// <summary>
+        /// Provide the API for the algorithm.
+        /// </summary>
+        /// <param name="api">Initiated API</param>
+        void SetApi(IApi api);
+
+        /// <summary>
+        /// Sets the order event provider
+        /// </summary>
+        /// <param name="newOrderEvent">The order event provider</param>
+        /// <remarks>Will be called before the <see cref="SecurityPortfolioManager"/></remarks>
+        void SetOrderEventProvider(IOrderEventProvider newOrderEvent);
     }
 }

@@ -1,11 +1,11 @@
 ﻿/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
- * 
- * Licensed under the Apache License, Version 2.0 (the "License"); 
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -14,6 +14,7 @@
 */
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using NodaTime;
 using NUnit.Framework;
@@ -35,7 +36,14 @@ namespace QuantConnect.Tests.Common.Securities
         {
             var exchangeHours = SecurityExchangeHours.AlwaysOpen(TimeZones.NewYork);
             var config = CreateTradeBarConfig();
-            var security = new Security(exchangeHours, config, new Cash(CashBook.AccountCurrency, 0, 1m), SymbolProperties.GetDefault(CashBook.AccountCurrency));
+            var security = new Security(
+                exchangeHours,
+                config,
+                new Cash(Currencies.USD, 0, 1m),
+                SymbolProperties.GetDefault(Currencies.USD),
+                ErrorCurrencyConverter.Instance,
+                RegisteredSecurityDataTypesProvider.Null
+            );
 
             Assert.AreEqual(config, security.Subscriptions.Single());
             Assert.AreEqual(config.Symbol, security.Symbol);
@@ -64,8 +72,8 @@ namespace QuantConnect.Tests.Common.Securities
             Assert.IsInstanceOf<ConstantSlippageModel>(security.SlippageModel);
             Assert.IsNotNull(security.SettlementModel);
             Assert.IsInstanceOf<ImmediateSettlementModel>(security.SettlementModel);
-            Assert.IsNotNull(security.MarginModel);
-            Assert.IsInstanceOf<SecurityMarginModel>(security.MarginModel);
+            Assert.IsNotNull(security.BuyingPowerModel);
+            Assert.IsInstanceOf<SecurityMarginModel>(security.BuyingPowerModel);
             Assert.IsNotNull(security.DataFilter);
             Assert.IsInstanceOf<SecurityDataFilter>(security.DataFilter);
         }
@@ -74,10 +82,10 @@ namespace QuantConnect.Tests.Common.Securities
         public void HoldingsTests()
         {
             var security = GetSecurity();
-            
+
             // Long 100 stocks test
             security.Holdings.SetHoldings(100m, 100);
-            
+
             Assert.AreEqual(100m, security.Holdings.AveragePrice);
             Assert.AreEqual(100, security.Holdings.Quantity);
             Assert.IsTrue(security.HoldStock);
@@ -152,7 +160,23 @@ namespace QuantConnect.Tests.Common.Securities
         [Test]
         public void DefaultDataNormalizationModeForOptionsIsRaw()
         {
-            var option = new Option(SecurityExchangeHours.AlwaysOpen(DateTimeZone.Utc), new SubscriptionDataConfig(typeof(TradeBar), Symbols.SPY_P_192_Feb19_2016, Resolution.Minute, DateTimeZone.Utc, DateTimeZone.Utc, true, false, false), new Cash(CashBook.AccountCurrency, 0, 1m), new OptionSymbolProperties(SymbolProperties.GetDefault(CashBook.AccountCurrency)));
+            var option = new Option(
+                SecurityExchangeHours.AlwaysOpen(DateTimeZone.Utc),
+                new SubscriptionDataConfig(
+                    typeof(TradeBar),
+                    Symbols.SPY_P_192_Feb19_2016,
+                    Resolution.Minute,
+                    DateTimeZone.Utc,
+                    DateTimeZone.Utc,
+                    true,
+                    false,
+                    false
+                ),
+                new Cash(Currencies.USD, 0, 1m),
+                new OptionSymbolProperties(SymbolProperties.GetDefault(Currencies.USD)),
+                ErrorCurrencyConverter.Instance,
+                RegisteredSecurityDataTypesProvider.Null
+            );
 
             Assert.AreEqual(option.DataNormalizationMode, DataNormalizationMode.Raw);
         }
@@ -160,7 +184,23 @@ namespace QuantConnect.Tests.Common.Securities
         [Test]
         public void SetDataNormalizationForOptions()
         {
-            var option = new Option(SecurityExchangeHours.AlwaysOpen(DateTimeZone.Utc), new SubscriptionDataConfig(typeof(TradeBar), Symbols.SPY_P_192_Feb19_2016, Resolution.Minute, DateTimeZone.Utc, DateTimeZone.Utc, true, false, false), new Cash(CashBook.AccountCurrency, 0, 1m), new OptionSymbolProperties(SymbolProperties.GetDefault(CashBook.AccountCurrency)));
+            var option = new Option(
+                SecurityExchangeHours.AlwaysOpen(DateTimeZone.Utc),
+                new SubscriptionDataConfig(
+                    typeof(TradeBar),
+                    Symbols.SPY_P_192_Feb19_2016,
+                    Resolution.Minute,
+                    DateTimeZone.Utc,
+                    DateTimeZone.Utc,
+                    true,
+                    false,
+                    false
+                ),
+                new Cash(Currencies.USD, 0, 1m),
+                new OptionSymbolProperties(SymbolProperties.GetDefault(Currencies.USD)),
+                ErrorCurrencyConverter.Instance,
+                RegisteredSecurityDataTypesProvider.Null
+            );
 
             Assert.DoesNotThrow(() => { option.SetDataNormalizationMode(DataNormalizationMode.Raw); });
 
@@ -173,7 +213,23 @@ namespace QuantConnect.Tests.Common.Securities
         [Test]
         public void SetDataNormalizationForEquities()
         {
-            var equity = new QuantConnect.Securities.Equity.Equity(SecurityExchangeHours.AlwaysOpen(DateTimeZone.Utc), new SubscriptionDataConfig(typeof(TradeBar), Symbols.SPY, Resolution.Minute, DateTimeZone.Utc, DateTimeZone.Utc, true, false, false), new Cash(CashBook.AccountCurrency, 0, 1m), SymbolProperties.GetDefault(CashBook.AccountCurrency));
+            var equity = new QuantConnect.Securities.Equity.Equity(
+                SecurityExchangeHours.AlwaysOpen(DateTimeZone.Utc),
+                new SubscriptionDataConfig(
+                    typeof(TradeBar),
+                    Symbols.SPY,
+                    Resolution.Minute,
+                    DateTimeZone.Utc,
+                    DateTimeZone.Utc,
+                    true,
+                    false,
+                    false
+                ),
+                new Cash(Currencies.USD, 0, 1m),
+                SymbolProperties.GetDefault(Currencies.USD),
+                ErrorCurrencyConverter.Instance,
+                RegisteredSecurityDataTypesProvider.Null
+            );
 
             Assert.DoesNotThrow(() => { equity.SetDataNormalizationMode(DataNormalizationMode.Raw); });
             Assert.DoesNotThrow(() => { equity.SetDataNormalizationMode(DataNormalizationMode.Adjusted); });
@@ -182,14 +238,74 @@ namespace QuantConnect.Tests.Common.Securities
             Assert.DoesNotThrow(() => { equity.SetDataNormalizationMode(DataNormalizationMode.TotalReturn); });
         }
 
-        private Security GetSecurity()
+        [Test]
+        public void TickQuantityUpdatedInSecurityCache()
         {
-            return new Security(SecurityExchangeHours.AlwaysOpen(TimeZones.NewYork), CreateTradeBarConfig(), new Cash(CashBook.AccountCurrency, 0, 1m), SymbolProperties.GetDefault(CashBook.AccountCurrency));
+            var tick1 = new Tick();
+            tick1.Update(1, 1, 1, 10, 1, 1);
+
+            var tick2 = new Tick();
+            tick2.Update(1, 1, 1, 20, 1, 1);
+
+            var securityCache = new SecurityCache();
+
+            Assert.AreEqual(0, securityCache.Volume);
+
+            securityCache.AddData(tick1);
+
+            Assert.AreEqual(10, securityCache.Volume);
+
+            securityCache.AddData(tick2);
+
+            Assert.AreEqual(20, securityCache.Volume);
         }
 
-        private static SubscriptionDataConfig CreateTradeBarConfig()
+        [Test]
+        public void InvokingCacheStoreData_UpdatesSecurityData_ByTypeName()
         {
-            return new SubscriptionDataConfig(typeof(TradeBar), Symbols.SPY, Resolution.Minute, TimeZones.NewYork, TimeZones.NewYork, true, true, false);
+            var security = GetSecurity();
+            var tradeBars = new List<TradeBar>
+            {
+                new TradeBar(DateTime.UtcNow, security.Symbol, 10m, 20m, 5m, 15m, 10000)
+            };
+
+            security.Cache.StoreData(tradeBars);
+
+            TradeBar fromSecurityData = security.Data.GetAll<TradeBar>()[0];
+            Assert.AreEqual(tradeBars[0].Time, fromSecurityData.Time);
+            Assert.AreEqual(tradeBars[0].Symbol, fromSecurityData.Symbol);
+            Assert.AreEqual(tradeBars[0].Open, fromSecurityData.Open);
+            Assert.AreEqual(tradeBars[0].High, fromSecurityData.High);
+            Assert.AreEqual(tradeBars[0].Low, fromSecurityData.Low);
+            Assert.AreEqual(tradeBars[0].Close, fromSecurityData.Close);
+            Assert.AreEqual(tradeBars[0].Volume, fromSecurityData.Volume);
+
+            // using dynamic accessor
+            var fromDynamicSecurityData = security.Data.TradeBar[0];
+            Assert.AreEqual(tradeBars[0].Time, fromDynamicSecurityData.Time);
+            Assert.AreEqual(tradeBars[0].Symbol, fromDynamicSecurityData.Symbol);
+            Assert.AreEqual(tradeBars[0].Open, fromDynamicSecurityData.Open);
+            Assert.AreEqual(tradeBars[0].High, fromDynamicSecurityData.High);
+            Assert.AreEqual(tradeBars[0].Low, fromDynamicSecurityData.Low);
+            Assert.AreEqual(tradeBars[0].Close, fromDynamicSecurityData.Close);
+            Assert.AreEqual(tradeBars[0].Volume, fromDynamicSecurityData.Volume);
+        }
+
+        internal static Security GetSecurity()
+        {
+            return new Security(
+                SecurityExchangeHours.AlwaysOpen(TimeZones.NewYork),
+                CreateTradeBarConfig(),
+                new Cash(Currencies.USD, 0, 1m),
+                SymbolProperties.GetDefault(Currencies.USD),
+                ErrorCurrencyConverter.Instance,
+                RegisteredSecurityDataTypesProvider.Null
+            );
+        }
+
+        internal static SubscriptionDataConfig CreateTradeBarConfig(Resolution resolution = Resolution.Minute)
+        {
+            return new SubscriptionDataConfig(typeof(TradeBar), Symbols.SPY, resolution, TimeZones.NewYork, TimeZones.NewYork, true, true, false);
         }
     }
 }

@@ -1,7 +1,19 @@
-﻿using Ionic.Zip;
-using NodaTime;
+﻿/*
+ * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
+ * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
 using NUnit.Framework;
-using QuantConnect.Data;
 using QuantConnect.Data.Custom;
 using QuantConnect.ToolBox;
 using System;
@@ -17,9 +29,8 @@ namespace QuantConnect.Tests.ToolBox
     /// The rationality is to test the main functionalities:
     ///     - Data is correctly parsed.
     ///     - Data is correctly saved.
-    ///     - Lean can read the saved data.
     /// </summary>
-    [TestFixture]
+    [TestFixture, Ignore("FXCM API goes down on weekends")]
     public class FxcmVolumeDownloaderTest
     {
         private string _dataDirectory;
@@ -31,7 +42,7 @@ namespace QuantConnect.Tests.ToolBox
         [SetUp]
         public void SetUpTemporatyFolder()
         {
-            var randomFolder = Guid.NewGuid().ToString("N").Substring(startIndex: 0, length: 8);
+            var randomFolder = Guid.NewGuid().ToStringInvariant("N").Substring(startIndex: 0, length: 8);
             var assemblyFolder = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
             _dataDirectory = Path.Combine(assemblyFolder, randomFolder);
             _downloader = new FxcmVolumeDownloader(_dataDirectory);
@@ -61,8 +72,8 @@ namespace QuantConnect.Tests.ToolBox
                 .Select(x => x.Split(','))
                 .ToArray();
             var symbol = Symbol.Create(ticker, SecurityType.Base, Market.FXCM);
-            var startUtc = DateTime.ParseExact(startDate, "yyyy-MM-dd", CultureInfo.InvariantCulture);
-            var endUtc = DateTime.ParseExact(endDate, "yyyy-MM-dd", CultureInfo.InvariantCulture);
+            var startUtc = Parse.DateTimeExact(startDate, "yyyy-MM-dd");
+            var endUtc = Parse.DateTimeExact(endDate, "yyyy-MM-dd");
             //Act
             var actualData = _downloader.Get(symbol, resolution, startUtc,
                 endUtc).Cast<FxcmVolume>().ToArray();
@@ -70,9 +81,9 @@ namespace QuantConnect.Tests.ToolBox
             Assert.AreEqual(expectedData.Length, actualData.Length);
             for (var i = 0; i < expectedData.Length - 1; i++)
             {
-                Assert.AreEqual(expectedData[i][0], actualData[i].Time.ToString("yyyy/MM/dd HH:mm"));
-                Assert.AreEqual(expectedData[i][1], actualData[i].Value.ToString());
-                Assert.AreEqual(expectedData[i][2], actualData[i].Transactions.ToString());
+                Assert.AreEqual(expectedData[i][0], actualData[i].Time.ToStringInvariant("yyyy/MM/dd HH:mm"));
+                Assert.AreEqual(expectedData[i][1], actualData[i].Value.ToString(CultureInfo.InvariantCulture));
+                Assert.AreEqual(expectedData[i][2], actualData[i].Transactions.ToString(CultureInfo.InvariantCulture));
             }
         }
 
@@ -83,7 +94,7 @@ namespace QuantConnect.Tests.ToolBox
         {
             // Arrange
             var symbol = Symbol.Create(ticker, SecurityType.Base, Market.FXCM);
-            var startUtc = DateTime.ParseExact(startDate, "yyyy-MM-dd", CultureInfo.InvariantCulture);
+            var startUtc = Parse.DateTimeExact(startDate, "yyyy-MM-dd");
             var endUtc = startUtc.AddDays(requestLength);
             var data = _downloader.Get(symbol, resolution, startUtc, endUtc);
             // Act
@@ -91,10 +102,10 @@ namespace QuantConnect.Tests.ToolBox
             writer.Write(data);
             // Assert
             var expectedData = data.Cast<FxcmVolume>().ToArray();
-            var expectedFolder = Path.Combine(_dataDirectory, string.Format("forex/fxcm/{0}", resolution.ToLower()));
+            var expectedFolder = Path.Combine(_dataDirectory, $"forex/fxcm/{resolution.ToLower()}");
             if (resolution == Resolution.Minute)
             {
-                expectedFolder = Path.Combine(expectedFolder, symbol.Value.ToLower());
+                expectedFolder = Path.Combine(expectedFolder, symbol.Value.ToLowerInvariant());
             }
             Assert.True(Directory.Exists(expectedFolder));
 
@@ -106,18 +117,18 @@ namespace QuantConnect.Tests.ToolBox
             }
             else
             {
-                var expectedFilename = string.Format("{0}_volume.zip", symbol.Value.ToLower());
+                var expectedFilename = $"{symbol.Value.ToLowerInvariant()}_volume.zip";
                 Assert.True(File.Exists(Path.Combine(expectedFolder, expectedFilename)));
             }
 
-            var actualdata = ReadZipFolderData(expectedFolder);
+            var actualdata = FxcmVolumeAuxiliaryMethods.ReadZipFolderData(expectedFolder);
             Assert.AreEqual(expectedData.Length, actualdata.Count);
 
             var lines = actualdata.Count;
             for (var i = 0; i < lines - 1; i++)
             {
-                Assert.AreEqual(expectedData[i].Value, long.Parse(actualdata[i][1]));
-                Assert.AreEqual(expectedData[i].Transactions, int.Parse(actualdata[i][2]));
+                Assert.AreEqual(expectedData[i].Value, Parse.Long(actualdata[i][1]));
+                Assert.AreEqual(expectedData[i].Transactions, Parse.Int(actualdata[i][2]));
             }
         }
 
@@ -149,39 +160,9 @@ namespace QuantConnect.Tests.ToolBox
             _downloader.Run(_eurusd, resolution, startDate, endDate);
             // Assert
             var outputFile = Path.Combine(_dataDirectory, "forex/fxcm/hour/eurusd_volume.zip");
-            var observationsCount = ReadZipFileData(outputFile).Count;
+            var observationsCount = FxcmVolumeAuxiliaryMethods.ReadZipFileData(outputFile).Count;
             // 3 years x 52 weeks x 5 days x 24 hours = 18720 hours at least.
-            Assert.True(observationsCount >= 18720, string.Format("Actual observations: {0}", observationsCount));
+            Assert.True(observationsCount >= 18720, $"Actual observations: {observationsCount}");
         }
-
-        #region Auxiliary Methods
-
-        private List<string[]> ReadZipFolderData(string outputFolder)
-        {
-            var actualdata = new List<string[]>();
-            var files = Directory.GetFiles(outputFolder, "*.zip");
-            foreach (var file in files)
-            {
-                actualdata.AddRange(ReadZipFileData(file));
-            }
-            return actualdata;
-        }
-
-        private List<string[]> ReadZipFileData(string dataZipFile)
-        {
-            var actualdata = new List<string[]>();
-            ZipFile zipFile;
-            using (var unzipped = QuantConnect.Compression.Unzip(dataZipFile, out zipFile))
-            {
-                string line;
-                while ((line = unzipped.ReadLine()) != null)
-                {
-                    actualdata.Add(line.Split(','));
-                }
-            }
-            return actualdata;
-        }
-
-        #endregion Auxiliary Methods
     }
 }

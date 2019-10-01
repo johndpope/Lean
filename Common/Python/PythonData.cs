@@ -26,7 +26,8 @@ namespace QuantConnect.Python
     public class PythonData : DynamicData
     {
         private readonly dynamic _pythonData;
-        
+        private readonly bool _requiresMapping;
+
         /// <summary>
         /// Constructor for initialising the PythonData class
         /// </summary>
@@ -42,8 +43,15 @@ namespace QuantConnect.Python
         public PythonData(PyObject pythonData)
         {
             _pythonData = pythonData;
+            using (Py.GIL())
+            {
+                if (pythonData.HasAttr("RequiresMapping"))
+                {
+                    _requiresMapping = _pythonData.RequiresMapping();
+                }
+            }
         }
-      
+
         /// <summary>
         /// Source Locator for algorithm written in Python.
         /// </summary>
@@ -54,8 +62,9 @@ namespace QuantConnect.Python
         public override SubscriptionDataSource GetSource(SubscriptionDataConfig config, DateTime date, bool isLiveMode)
         {
             using (Py.GIL())
-            {             
-                return _pythonData.GetSource(config, date, isLiveMode);               
+            {
+                var source = _pythonData.GetSource(config, date, isLiveMode);
+                return (source as PyObject).GetAndDispose<SubscriptionDataSource>();
             }
         }
 
@@ -68,13 +77,23 @@ namespace QuantConnect.Python
         /// <param name="isLiveMode">true if we're in live mode, false for backtesting mode</param>
         /// <returns></returns>
         public override BaseData Reader(SubscriptionDataConfig config, string line, DateTime date, bool isLiveMode)
-        {   
+        {
             using (Py.GIL())
             {
-                return _pythonData.Reader(config, line, date, isLiveMode);
+                var data = _pythonData.Reader(config, line, date, isLiveMode);
+                return (data as PyObject).GetAndDispose<BaseData>();
             }
         }
-        
+
+        /// <summary>
+        /// Indicates if there is support for mapping
+        /// </summary>
+        /// <returns>True indicates mapping should be used</returns>
+        public override bool RequiresMapping()
+        {
+            return _requiresMapping;
+        }
+
         /// <summary>
         /// Indexes into this PythonData, where index is key to the dynamic property
         /// </summary>
@@ -82,15 +101,15 @@ namespace QuantConnect.Python
         /// <returns>Dynamic property of a given index</returns>
         public object this[string index]
         {
-            get 
+            get
             {
                 return GetProperty(index);
             }
 
             set
             {
-                SetProperty(index, value is double ? Convert.ToDecimal(value) : value);
+                SetProperty(index, value is double ? value.ConvertInvariant<decimal>() : value);
             }
-        }   
+        }
     }
 }

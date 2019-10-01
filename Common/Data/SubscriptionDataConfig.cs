@@ -1,11 +1,11 @@
 ﻿/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
- * 
- * Licensed under the Apache License, Version 2.0 (the "License"); 
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -21,6 +21,7 @@ using NodaTime;
 using QuantConnect.Data.Consolidators;
 using QuantConnect.Securities;
 using QuantConnect.Util;
+using static QuantConnect.StringExtensions;
 
 namespace QuantConnect.Data
 {
@@ -103,7 +104,7 @@ namespace QuantConnect.Data
         {
             get
             {
-                return Symbol.ID.SecurityType == SecurityType.Option ? 
+                return Symbol.ID.SecurityType == SecurityType.Option ?
                     (Symbol.HasUnderlying ? Symbol.Underlying.Value : Symbol.Value) :
                     Symbol.Value;
             }
@@ -131,7 +132,7 @@ namespace QuantConnect.Data
         /// <summary>
         /// Consolidators that are registred with this subscription
         /// </summary>
-        public readonly HashSet<IDataConsolidator> Consolidators;
+        public readonly ISet<IDataConsolidator> Consolidators;
 
         /// <summary>
         /// Gets whether or not this subscription should have filters applied to it (market hours/user filters from security)
@@ -168,10 +169,10 @@ namespace QuantConnect.Data
             bool isFilteredSubscription = true,
             DataNormalizationMode dataNormalizationMode = DataNormalizationMode.Adjusted)
         {
-            if (objectType == null) throw new ArgumentNullException("objectType");
-            if (symbol == null) throw new ArgumentNullException("symbol");
-            if (dataTimeZone == null) throw new ArgumentNullException("dataTimeZone");
-            if (exchangeTimeZone == null) throw new ArgumentNullException("exchangeTimeZone");
+            if (objectType == null) throw new ArgumentNullException(nameof(objectType));
+            if (symbol == null) throw new ArgumentNullException(nameof(symbol));
+            if (dataTimeZone == null) throw new ArgumentNullException(nameof(dataTimeZone));
+            if (exchangeTimeZone == null) throw new ArgumentNullException(nameof(exchangeTimeZone));
 
             Type = objectType;
             SecurityType = symbol.ID.SecurityType;
@@ -187,7 +188,7 @@ namespace QuantConnect.Data
             DataTimeZone = dataTimeZone;
             ExchangeTimeZone = exchangeTimeZone;
             IsFilteredSubscription = isFilteredSubscription;
-            Consolidators = new HashSet<IDataConsolidator>();
+            Consolidators = new ConcurrentSet<IDataConsolidator>();
             DataNormalizationMode = dataNormalizationMode;
 
             TickType = tickType ?? LeanData.GetCommonTickTypeForCommonDataTypes(objectType, SecurityType);
@@ -212,7 +213,7 @@ namespace QuantConnect.Data
                     Increment = TimeSpan.FromDays(1);
                     break;
                 default:
-                    throw new InvalidEnumArgumentException("Unexpected Resolution: " + resolution);
+                    throw new InvalidEnumArgumentException(Invariant($"Unexpected Resolution: {resolution}"));
             }
         }
 
@@ -251,7 +252,7 @@ namespace QuantConnect.Data
             objectType ?? config.Type,
             symbol ?? config.Symbol,
             resolution ?? config.Resolution,
-            dataTimeZone ?? config.DataTimeZone, 
+            dataTimeZone ?? config.DataTimeZone,
             exchangeTimeZone ?? config.ExchangeTimeZone,
             fillForward ?? config.FillDataForward,
             extendedHours ?? config.ExtendedMarketHours,
@@ -262,6 +263,9 @@ namespace QuantConnect.Data
             dataNormalizationMode ?? config.DataNormalizationMode
             )
         {
+            PriceScaleFactor = config.PriceScaleFactor;
+            SumOfDividends = config.SumOfDividends;
+            Consolidators = config.Consolidators;
         }
 
         /// <summary>
@@ -274,15 +278,15 @@ namespace QuantConnect.Data
             {
                 case DataNormalizationMode.Raw:
                     return price;
-                
+
                 // the price scale factor will be set accordingly based on the mode in update scale factors
                 case DataNormalizationMode.Adjusted:
                 case DataNormalizationMode.SplitAdjusted:
                     return price*PriceScaleFactor;
-                
+
                 case DataNormalizationMode.TotalReturn:
                     return (price*PriceScaleFactor) + SumOfDividends;
-                
+
                 default:
                     throw new ArgumentOutOfRangeException();
             }
@@ -299,14 +303,14 @@ namespace QuantConnect.Data
         {
             if (ReferenceEquals(null, other)) return false;
             if (ReferenceEquals(this, other)) return true;
-            return _sid.Equals(other._sid) && Type == other.Type 
-                && TickType == other.TickType 
+            return _sid.Equals(other._sid) && Type == other.Type
+                && TickType == other.TickType
                 && Resolution == other.Resolution
-                && FillDataForward == other.FillDataForward 
-                && ExtendedMarketHours == other.ExtendedMarketHours 
+                && FillDataForward == other.FillDataForward
+                && ExtendedMarketHours == other.ExtendedMarketHours
                 && IsInternalFeed == other.IsInternalFeed
-                && IsCustomData == other.IsCustomData 
-                && DataTimeZone.Equals(other.DataTimeZone) 
+                && IsCustomData == other.IsCustomData
+                && DataTimeZone.Equals(other.DataTimeZone)
                 && ExchangeTimeZone.Equals(other.ExchangeTimeZone)
                 && IsFilteredSubscription == other.IsFilteredSubscription;
         }
@@ -327,7 +331,7 @@ namespace QuantConnect.Data
         }
 
         /// <summary>
-        /// Serves as the default hash function. 
+        /// Serves as the default hash function.
         /// </summary>
         /// <returns>
         /// A hash code for the current object.
@@ -344,8 +348,8 @@ namespace QuantConnect.Data
                 hashCode = (hashCode*397) ^ ExtendedMarketHours.GetHashCode();
                 hashCode = (hashCode*397) ^ IsInternalFeed.GetHashCode();
                 hashCode = (hashCode*397) ^ IsCustomData.GetHashCode();
-                hashCode = (hashCode*397) ^ DataTimeZone.GetHashCode();
-                hashCode = (hashCode*397) ^ ExchangeTimeZone.GetHashCode();
+                hashCode = (hashCode*397) ^ DataTimeZone.Id.GetHashCode();// timezone hash is expensive, use id instead
+                hashCode = (hashCode*397) ^ ExchangeTimeZone.Id.GetHashCode();// timezone hash is expensive, use id instead
                 hashCode = (hashCode*397) ^ IsFilteredSubscription.GetHashCode();
                 return hashCode;
             }
@@ -376,7 +380,7 @@ namespace QuantConnect.Data
         /// <filterpriority>2</filterpriority>
         public override string ToString()
         {
-            return Symbol.Value + "," + MappedSymbol + "," + Resolution + "," + Type.Name + "," + TickType;
+            return Invariant($"{Symbol.Value},{MappedSymbol},{Resolution},{Type.Name},{TickType},{DataNormalizationMode}");
         }
     }
 }

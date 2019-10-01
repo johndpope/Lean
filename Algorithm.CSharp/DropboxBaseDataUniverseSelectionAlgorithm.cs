@@ -1,11 +1,11 @@
 /*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
- * 
- * Licensed under the Apache License, Version 2.0 (the "License"); 
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -18,6 +18,7 @@ using System.Collections.Generic;
 using System.Linq;
 using QuantConnect.Data;
 using QuantConnect.Data.UniverseSelection;
+using QuantConnect.Interfaces;
 
 namespace QuantConnect.Algorithm.CSharp
 {
@@ -26,8 +27,13 @@ namespace QuantConnect.Algorithm.CSharp
     /// to be traded using the BaseData custom data system in combination with the AddUniverse{T} method.
     /// AddUniverse{T} requires a function that will return the symbols to be traded.
     /// </summary>
-    public class DropboxBaseDataUniverseSelectionAlgorithm : QCAlgorithm
+    /// <meta name="tag" content="using data" />
+    /// <meta name="tag" content="universes" />
+    /// <meta name="tag" content="custom universes" />
+    public class DropboxBaseDataUniverseSelectionAlgorithm : QCAlgorithm//, IRegressionAlgorithmDefinition
     {
+        // Regression algorithm disabled due to dropbox file missing
+
         // the changes from the previous universe selection
         private SecurityChanges _changes = SecurityChanges.None;
 
@@ -70,7 +76,7 @@ namespace QuantConnect.Algorithm.CSharp
             if (_changes == SecurityChanges.None) return;
 
             // start fresh
-            
+
             Liquidate();
 
             var percentage = 1m / slice.Bars.Count;
@@ -116,7 +122,7 @@ namespace QuantConnect.Algorithm.CSharp
             }
 
             /// <summary>
-            /// Return the URL string source of the file. This will be converted to a stream 
+            /// Return the URL string source of the file. This will be converted to a stream
             /// </summary>
             /// <param name="config">Configuration object</param>
             /// <param name="date">Date of this source file</param>
@@ -129,7 +135,7 @@ namespace QuantConnect.Algorithm.CSharp
             }
 
             /// <summary>
-            /// Reader converts each line of the data source into BaseData objects. Each data type creates its own factory method, and returns a new instance of the object 
+            /// Reader converts each line of the data source into BaseData objects. Each data type creates its own factory method, and returns a new instance of the object
             /// each time it is called. The returned object is assumed to be time stamped in the config.ExchangeTimeZone.
             /// </summary>
             /// <param name="config">Subscription data config setup object</param>
@@ -164,5 +170,41 @@ namespace QuantConnect.Algorithm.CSharp
                 catch { return null; }
             }
         }
+
+        /// <summary>
+        /// This is used by the regression test system to indicate if the open source Lean repository has the required data to run this algorithm.
+        /// </summary>
+        public bool CanRunLocally { get; } = true;
+
+        /// <summary>
+        /// This is used by the regression test system to indicate which languages this algorithm is written in.
+        /// </summary>
+        public Language[] Languages { get; } = { Language.CSharp, Language.Python };
+
+        /// <summary>
+        /// This is used by the regression test system to indicate what the expected statistics are from running the algorithm
+        /// </summary>
+        public Dictionary<string, string> ExpectedStatistics => new Dictionary<string, string>
+        {
+            {"Total Trades", "90"},
+            {"Average Win", "0.78%"},
+            {"Average Loss", "-0.39%"},
+            {"Compounding Annual Return", "18.547%"},
+            {"Drawdown", "4.700%"},
+            {"Expectancy", "1.068"},
+            {"Net Profit", "18.547%"},
+            {"Sharpe Ratio", "1.993"},
+            {"Loss Rate", "30%"},
+            {"Win Rate", "70%"},
+            {"Profit-Loss Ratio", "1.96"},
+            {"Alpha", "0.071"},
+            {"Beta", "0.362"},
+            {"Annual Standard Deviation", "0.086"},
+            {"Annual Variance", "0.007"},
+            {"Information Ratio", "-1.021"},
+            {"Tracking Error", "0.103"},
+            {"Treynor Ratio", "0.471"},
+            {"Total Fees", "$251.12"}
+        };
     }
 }

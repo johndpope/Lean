@@ -1,11 +1,11 @@
 ﻿/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
- * 
- * Licensed under the Apache License, Version 2.0 (the "License"); 
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -15,6 +15,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using NUnit.Framework;
 using QuantConnect.Data;
 using QuantConnect.Data.Custom;
@@ -129,6 +130,57 @@ namespace QuantConnect.Tests.Common.Data
 
             Quandl quandlData = slice.Get<Quandl>(Symbols.SPY);
             Assert.AreEqual(quandlSpy, quandlData);
+        }
+
+        [Test]
+        public void EnumeratorDoesNotThrowWithTicks()
+        {
+            var slice = new Slice(DateTime.Now, new[]
+            {
+                new Tick(DateTime.Now, Symbols.SPY, 1, 2),
+                new Tick(DateTime.Now, Symbols.SPY, 1.1m, 2.1m),
+                new Tick(DateTime.Now, Symbols.AAPL, 1, 2),
+                new Tick(DateTime.Now, Symbols.AAPL, 1.1m, 2.1m)
+            });
+
+            Assert.AreEqual(4, slice.Count());
+        }
+
+        [Test]
+        public void AccessesTradeBarAndQuoteBarForSameSymbol()
+        {
+            var tradeBar = new TradeBar(DateTime.Now, Symbols.BTCUSD,
+                3000, 3000, 3000, 3000, 100, Time.OneMinute);
+
+            var quoteBar = new QuoteBar(DateTime.Now, Symbols.BTCUSD,
+                    new Bar(3100, 3100, 3100, 3100), 0,
+                    new Bar(3101, 3101, 3101, 3101), 0,
+                    Time.OneMinute);
+
+            var tradeBars = new TradeBars { { Symbols.BTCUSD, tradeBar } };
+            var quoteBars = new QuoteBars { { Symbols.BTCUSD, quoteBar } };
+
+            var slice = new Slice(DateTime.Now, new BaseData[] { tradeBar, quoteBar }, tradeBars, quoteBars, null, null, null, null, null, null, null);
+
+            var tradeBarData = slice.Get<TradeBar>();
+            Assert.AreEqual(1, tradeBarData.Count);
+            Assert.AreEqual(3000, tradeBarData[Symbols.BTCUSD].Close);
+
+            var quoteBarData = slice.Get<QuoteBar>();
+            Assert.AreEqual(1, quoteBarData.Count);
+            Assert.AreEqual(3100, quoteBarData[Symbols.BTCUSD].Bid.Close);
+            Assert.AreEqual(3101, quoteBarData[Symbols.BTCUSD].Ask.Close);
+
+            slice = new Slice(DateTime.Now, new BaseData[] { tradeBar, quoteBar });
+
+            tradeBarData = slice.Get<TradeBar>();
+            Assert.AreEqual(1, tradeBarData.Count);
+            Assert.AreEqual(3000, tradeBarData[Symbols.BTCUSD].Close);
+
+            quoteBarData = slice.Get<QuoteBar>();
+            Assert.AreEqual(1, quoteBarData.Count);
+            Assert.AreEqual(3100, quoteBarData[Symbols.BTCUSD].Bid.Close);
+            Assert.AreEqual(3101, quoteBarData[Symbols.BTCUSD].Ask.Close);
         }
     }
 }

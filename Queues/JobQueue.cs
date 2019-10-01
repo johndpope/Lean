@@ -1,11 +1,11 @@
 ﻿/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
- * 
- * Licensed under the Apache License, Version 2.0 (the "License"); 
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -39,8 +39,8 @@ namespace QuantConnect.Queues
         private static readonly string AccessToken = Config.Get("api-access-token");
         private static readonly int UserId = Config.GetInt("job-user-id", 0);
         private static readonly int ProjectId = Config.GetInt("job-project-id", 0);
-        private static readonly string AlgorithmTypeName = Config.Get("algorithm-type-name");
-        private static readonly string AlgorithmPathPython = Config.Get("algorithm-path-python", "../../../Algorithm.Python/");
+        private readonly string AlgorithmTypeName = Config.Get("algorithm-type-name");
+        private readonly string AlgorithmPathPython = Config.Get("algorithm-path-python", "../../../Algorithm.Python/");
         private readonly Language Language = (Language)Enum.Parse(typeof(Language), Config.Get("algorithm-language"));
 
         /// <summary>
@@ -51,7 +51,7 @@ namespace QuantConnect.Queues
             get
             {
                 // we expect this dll to be copied into the output directory
-                return Config.Get("algorithm-location", "QuantConnect.Algorithm.CSharp.dll"); 
+                return Config.Get("algorithm-location", "QuantConnect.Algorithm.CSharp.dll");
             }
         }
 
@@ -62,7 +62,7 @@ namespace QuantConnect.Queues
         {
             //
         }
-        
+
         /// <summary>
         /// Desktop/Local Get Next Task - Get task from the Algorithm folder of VS Solution.
         /// </summary>
@@ -70,11 +70,11 @@ namespace QuantConnect.Queues
         public AlgorithmNodePacket NextJob(out string location)
         {
             location = GetAlgorithmLocation();
-                
-            Log.Trace("JobQueue.NextJob(): Selected " + location);
+
+            Log.Trace($"JobQueue.NextJob(): Selected {location}");
 
             // check for parameters in the config
-            var parameters = new Dictionary<string, string>();            
+            var parameters = new Dictionary<string, string>();
 
             var parametersConfigString = Config.Get("parameters");
             if (parametersConfigString != string.Empty)
@@ -87,8 +87,28 @@ namespace QuantConnect.Queues
                 MinuteLimit = Config.GetInt("symbol-minute-limit", 10000),
                 SecondLimit = Config.GetInt("symbol-second-limit", 10000),
                 TickLimit = Config.GetInt("symbol-tick-limit", 10000),
-                RamAllocation = int.MaxValue
+                RamAllocation = int.MaxValue,
+                MaximumDataPointsPerChartSeries =  Config.GetInt("maximum-data-points-per-chart-series", 4000)
             };
+
+            if ((Language)Enum.Parse(typeof(Language), Config.Get("algorithm-language")) == Language.Python)
+            {
+                // Set the python path for loading python algorithms.
+                var pythonFile = new FileInfo(location);
+                var pythonPath = new List<string>
+                {
+                    pythonFile.Directory.FullName,
+                    new DirectoryInfo(Environment.CurrentDirectory).FullName,
+                };
+                // Don't include an empty environment variable in pythonPath, otherwise the PYTHONPATH
+                // environment variable won't be used in the module import process
+                var pythonPathEnvironmentVariable = Environment.GetEnvironmentVariable("PYTHONPATH");
+                if (!string.IsNullOrEmpty(pythonPathEnvironmentVariable))
+                {
+                    pythonPath.Add(pythonPathEnvironmentVariable);
+                }
+                Environment.SetEnvironmentVariable("PYTHONPATH", string.Join(OS.IsLinux ? ":" : ";", pythonPath));
+            }
 
             //If this isn't a backtesting mode/request, attempt a live job.
             if (_liveMode)
@@ -101,6 +121,7 @@ namespace QuantConnect.Queues
                     HistoryProvider = Config.Get("history-provider", DefaultHistoryProvider),
                     DataQueueHandler = Config.Get("data-queue-handler", DefaultDataQueueHandler),
                     Channel = AccessToken,
+                    UserToken = AccessToken,
                     UserId = UserId,
                     ProjectId = ProjectId,
                     Version = Globals.Version,
@@ -111,14 +132,14 @@ namespace QuantConnect.Queues
                 };
 
                 try
-                { 
+                {
                     // import the brokerage data for the configured brokerage
                     var brokerageFactory = Composer.Instance.Single<IBrokerageFactory>(factory => factory.BrokerageType.MatchesTypeName(liveJob.Brokerage));
                     liveJob.BrokerageData = brokerageFactory.BrokerageData;
                 }
                 catch (Exception err)
                 {
-                    Log.Error(err, string.Format("Error resolving BrokerageData for live job for brokerage {0}:", liveJob.Brokerage));
+                    Log.Error(err, $"Error resolving BrokerageData for live job for brokerage {liveJob.Brokerage}");
                 }
 
                 return liveJob;
@@ -131,6 +152,7 @@ namespace QuantConnect.Queues
                 Algorithm = File.ReadAllBytes(AlgorithmLocation),
                 HistoryProvider = Config.Get("history-provider", DefaultHistoryProvider),
                 Channel = AccessToken,
+                UserToken = AccessToken,
                 UserId = UserId,
                 ProjectId = ProjectId,
                 Version = Globals.Version,
@@ -162,7 +184,7 @@ namespace QuantConnect.Queues
 
                     if (!File.Exists(pythonSource))
                     {
-                        throw new Exception("JobQueue.TryCreatePythonAlgorithm(): Unable to find py file: " + pythonSource);
+                        throw new FileNotFoundException($"JobQueue.TryCreatePythonAlgorithm(): Unable to find py file: {pythonSource}");
                     }
                 }
             }
